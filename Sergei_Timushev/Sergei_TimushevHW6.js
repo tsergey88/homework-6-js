@@ -8,10 +8,15 @@ function Character(unitClass, life, damage) {
     this.damage = damage;
     this.maxLife = life;
     this.counter = 2;
+    this.rateCheat = Math.floor(Math.random() * 10); //Коэффицент читерства ))
 }
 
 Character.prototype.getName = function (dmg) {
     return this.name;
+}
+
+Character.prototype.getType = function (dmg) {
+    return this.unitType;
 }
 
 Character.prototype.getUnitClass = function (dmg) {
@@ -50,6 +55,7 @@ Character.prototype.shouldUseSkill = function () {
 
 function Hero() {
     Character.apply(this, arguments);
+    this.unitType = 'Hero';
     let randNameForHero = Math.floor(Math.random() * ALLOWED_NAMES_HERO.length);
     this.name = ALLOWED_NAMES_HERO[randNameForHero];
     if (!this.name || ALLOWED_NAMES_HERO.indexOf(this.name) == -1) {
@@ -70,8 +76,25 @@ Hero.prototype.setLife = function (dmg) {
 
 }
 
+Hero.prototype.getOpponent = function (obj) {
+    if (obj.getType() == 'Monster' && this.rateCheat > 5) {
+        Hero.prototype.setLife = function (dmg) {
+            this.life -= dmg;
+        }
+        Hero.prototype.getDamage = function () {
+            if (this.shouldUseSkill()) {
+                this.counter--;
+                return this.damage * 2;
+            }
+
+            return this.damage;
+        }
+    }
+}
+
 function Monster() {
     Character.apply(this, arguments);
+    this.unitType = 'Monster';
     let randNameForMonster = Math.floor(Math.random() * DIRECTORY_MONSTERS_CREATURES.length);
     this.name = DIRECTORY_MONSTERS_CREATURES[randNameForMonster];
     if (!this.name || DIRECTORY_MONSTERS_CREATURES.indexOf(this.name) == -1) {
@@ -82,7 +105,6 @@ function Monster() {
 Monster.prototype = Object.create(Character.prototype);
 Monster.prototype.constructor = Monster;
 
-
 Monster.prototype.getDamage = function () {
 
     if (this.shouldUseSkill()) {
@@ -91,6 +113,21 @@ Monster.prototype.getDamage = function () {
     }
 
     return this.damage;
+}
+
+Monster.prototype.getOpponent = function (obj) {
+    if (obj.getType() == 'Hero' && this.rateCheat > 5) {
+        Monster.prototype.setLife = function (dmg) {
+            if (this.shouldUseSkill()) {
+                this.counter--;
+            } else {
+                this.life -= dmg;
+            }
+        }
+        Monster.prototype.getDamage = function () {
+            return this.damage;
+        }
+    }
 }
 
 function Tournament(countUnit) {
@@ -112,35 +149,57 @@ Tournament.prototype.showUnits = function () {
     }
 }
 
+Tournament.prototype.meetsUnit = function (firstUnit, secondUnit) {
+    this.unitList[firstUnit].getOpponent(this.unitList[secondUnit]);
+    this.unitList[secondUnit].getOpponent(this.unitList[firstUnit]);
+}
+
+Tournament.prototype.fight = function (firstUnit, secondUnit) {
+    this.meetsUnit(firstUnit, secondUnit);
+    while (this.unitList[firstUnit].isAlive() && this.unitList[secondUnit].isAlive()) {
+        this.unitList[firstUnit].attack(this.unitList[secondUnit]);
+        console.log('Хп 1: ' + this.unitList[secondUnit].getName() + ' ' + this.unitList[secondUnit].getLife());
+        if (this.unitList[secondUnit].isAlive()) {
+            this.unitList[secondUnit].attack(this.unitList[firstUnit]);
+            console.log('Хп 2: ' + this.unitList[firstUnit].getName() + ' ' + this.unitList[firstUnit].getLife());
+        }
+    }
+}
+
+Tournament.prototype.getWinnerUnitList = function (firstUnit, secondUnit, winnerUnitList) {
+    if (this.unitList[firstUnit].isAlive()) {
+        this.unitList[firstUnit].refreshLife();
+        return winnerUnitList.splice(-1, 0, this.unitList[firstUnit]);
+    } else {
+        this.unitList[secondUnit].refreshLife();
+        return winnerUnitList.splice(-1, 0, this.unitList[secondUnit]);
+    }
+}
+
 Tournament.prototype.start = function () {
     while (this.unitList.length > 1) {
-        let UnitWithoutPair, tempUnitList = [];
+
+        let unitWithoutPair;
         if (this.unitList.length % 2) {
-            UnitWithoutPair = this.unitList[this.unitList.length - 1];
+            unitWithoutPair = this.unitList[this.unitList.length - 1];
             this.unitList.splice(-1, 1);
         }
+
+        let winnerUnitList = [];
         for (let i = 0; i < this.unitList.length; i += 2) {
-            while (this.unitList[i].isAlive() && this.unitList[i + 1].isAlive()) {
-                this.unitList[i].attack(this.unitList[i + 1]);
-                console.log('Хп 1: ' + this.unitList[i + 1].getName() + ' ' + this.unitList[i + 1].getLife());
-                if (this.unitList[i + 1].isAlive()) {
-                    this.unitList[i + 1].attack(this.unitList[i]);
-                    console.log('Хп 2: ' + this.unitList[i].getName() + ' ' + this.unitList[i].getLife());
-                }
-            }
-            if (this.unitList[i].isAlive()) {
-                this.unitList[i].refreshLife();
-                tempUnitList.splice(-1, 0, this.unitList[i]);
-            } else {
-                this.unitList[i + 1].refreshLife();
-                tempUnitList.splice(-1, 0, this.unitList[i + 1]);
-            }
-        }
-        if (UnitWithoutPair) {
-            tempUnitList.splice(-1, 0, UnitWithoutPair);
+
+            let firstUnit = i,
+                secondUnit = i + 1;
+
+            this.fight(firstUnit, secondUnit);
+            this.getWinnerUnitList(firstUnit, secondUnit, winnerUnitList);
         }
 
-        this.unitList = tempUnitList;
+        if (unitWithoutPair) {
+            winnerUnitList.splice(-1, 0, unitWithoutPair);
+        }
+
+        this.unitList = winnerUnitList;
     }
     console.log('Победитель: ' + this.unitList[0].getName() + '!!!');
 }
@@ -150,7 +209,7 @@ function VampireFactory() {
 }
 
 function OrcsFactory() {
-    return new Monster('Orcs', 520, 150);
+    return new Monster('Orcs', 520, 100);
 }
 
 function GoblinFactory() {
@@ -158,7 +217,7 @@ function GoblinFactory() {
 }
 
 function WizardFactory() {
-    return new Hero('Wizard', 500, 250);
+    return new Hero('Wizard', 200, 300);
 }
 
 function WarriorFactory() {
@@ -170,6 +229,6 @@ function ThiefFactory() {
 }
 
 let newTour = new Tournament(5);
-newTour.registrationUnit(WizardFactory(), ThiefFactory(), VampireFactory(), GoblinFactory(), GoblinFactory());
+newTour.registrationUnit(WizardFactory(), ThiefFactory(), VampireFactory(), GoblinFactory(), OrcsFactory());
 newTour.showUnits();
 newTour.start();
